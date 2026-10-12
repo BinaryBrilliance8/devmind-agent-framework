@@ -2,6 +2,8 @@
 
 **An execution-grounded agent framework for repository-level software engineering.** DevMind combines AST-based repository context, bounded subprocess execution, syntax-guarded edits, Git checkpoints, pytest feedback, and a small web IDE into one inspectable workflow.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/BinaryBrilliance8/devmind-agent-framework)
+
 > Portfolio / research prototype. Local mode executes repository commands on the local host and is intended for trusted code. Public mode delegates commands and tests to disposable E2B microVMs.
 
 ## What it does

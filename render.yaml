@@ -4,6 +4,7 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /api/health
+    autoDeployTrigger: off
     envVars:
       - key: DEVMIND_PUBLIC_MODE
         value: "true"
