@@ -19,7 +19,7 @@
 Requirements: Python 3.11+, Git, and (for model-assisted runs) either a local Ollama server or a hosted provider key.
 
 ```bash
-git clone https://github.com/<owner>/devmind-agent-framework.git
+git clone https://github.com/BinaryBrilliance8/devmind-agent-framework.git
 cd devmind-agent-framework
 python3 -m venv .venv
 source .venv/bin/activate
