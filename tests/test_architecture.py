@@ -11,7 +11,7 @@ import pytest
 from devmind.agent.tools import EditError, FileEditor
 from devmind.sandbox.benchmarks import available_benchmarks, create_benchmark
 from devmind.sandbox.executor import CommandRejected, Executor
-from devmind.sandbox.workspace import prepare_workspace
+from devmind.sandbox.workspace import WorkspaceError, prepare_workspace
 
 
 PUBLIC_REPO = os.getenv("DEVMIND_PUBLIC_TEST_REPO", "https://github.com/octocat/Hello-World.git")
@@ -27,6 +27,22 @@ def test_git_ingestion_clones_public_repository_and_sets_identity(tmp_path: Path
     depth = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=path, text=True, capture_output=True, check=True).stdout.strip()
     assert (name, email) == ("DevMind", "bot@devmind.local")
     assert depth == "1", "remote ingestion should use a shallow clone"
+
+
+def test_workspace_size_limit_rejects_clone_and_cleans_partial_workspace(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "payload.bin").write_bytes(b"0123456789")
+    subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+    subprocess.run(["git", "config", "--local", "user.name", "DevMind"], cwd=source, check=True)
+    subprocess.run(["git", "config", "--local", "user.email", "bot@devmind.local"], cwd=source, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=source, check=True)
+    destination = tmp_path / "cloned"
+
+    with pytest.raises(WorkspaceError, match="workspace limits"):
+        asyncio.run(prepare_workspace(source, destination, max_files=10, max_bytes=9))
+    assert not destination.exists()
 
 
 def test_ast_gate_rejects_invalid_write_without_touching_file(tmp_path: Path) -> None:

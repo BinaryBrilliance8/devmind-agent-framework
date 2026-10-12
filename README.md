@@ -1,6 +1,6 @@
 # DevMind
 
-**An execution-grounded agent framework for repository-level software engineering.** DevMind combines AST-based repository context, bounded subprocess execution, syntax-guarded edits, Git checkpoints, pytest feedback, and a small web IDE into one inspectable workflow.
+**An execution-grounded agent framework for repository-level software engineering.** DevMind combines AST-based repository context, bounded subprocess execution, syntax-guarded edits, Git checkpoints, test feedback with one bounded correction attempt, and a small web IDE into one inspectable workflow.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/BinaryBrilliance8/devmind-agent-framework)
 
@@ -9,11 +9,12 @@
 ## What it does
 
 - Opens a local repository or shallow-clones a Git URL into a workspace.
-- Builds a Python AST symbol map and narrows context using an issue description.
+- Builds a Python AST symbol map and a conservative JavaScript/TypeScript declaration map, then ranks modules and symbols against the issue description. JavaScript/TypeScript indexing is a declaration scanner, not a full AST parser.
 - Runs a deterministic five-stage task pipeline: localize, reproduce, patch, verify, and reflect or roll back.
 - Restricts Python writes to syntactically valid files and creates a Git checkpoint before an edit.
 - Executes commands as argv without shell composition, with a workspace cwd, timeout, bounded output, and API key/token environment filtering.
 - Streams model output, provider usage where the provider returns it, provider/model identity, command results, and measured latency to the browser.
+- Detects common Python and Node test setups, displays the selected verification command, and allows an override. It refuses to run the agent when no test command is configured or detected.
 - Includes three local, multi-file bug benchmarks and a dark-mode FastAPI web IDE.
 
 ## Quick start
@@ -75,7 +76,7 @@ curl -s -X POST http://127.0.0.1:8000/api/workspace \
   -d '{"benchmark":"async-rate-limiter"}'
 ```
 
-Then run an issue through the UI. Local benchmarks do not require cloning a public repository; model-assisted repair still requires a reachable configured model.
+Then run an issue through the UI. Local benchmarks do not require cloning a public repository; model-assisted repair still requires a reachable configured model. The three built-in benchmark templates are deterministic synthetic regression projects; they are not the SWE-Bench dataset or evaluator.
 
 ## Verification
 
@@ -83,13 +84,13 @@ Then run an issue through the UI. Local benchmarks do not require cloning a publ
 python -m pytest -v
 ```
 
-The architecture tests exercise real local Git operations, syntax rejection without disk mutation, command output/environment limits, and failing baseline tests for the benchmark repositories. CI runs the test suite on supported Python versions.
+The tests exercise real local Git operations, syntax rejection without disk mutation, bounded command execution, language indexing, request-to-agent test-command wiring, and the five-stage pipeline using a deterministic test client plus real Git and pytest subprocesses. A separate live run against a configured LLM is still needed to evaluate that model's patch quality; the automated suite does not certify autonomous success rates. CI runs the test suite on supported Python versions.
 
 ## Security and deployment
 
-Local mode deliberately launches commands and tests from the opened workspace on the same host. Process timeouts, argv-only execution, path checks, output caps, and environment filtering do **not** contain malicious code. Do not expose local mode to untrusted users.
+Local mode deliberately launches commands and tests from the opened workspace on the same host. The workspace is a disposable Git clone, but this is not an OS-level sandbox: process timeouts, argv-only execution, path checks, output caps, and environment filtering do **not** contain malicious code. Do not expose local mode to untrusted users.
 
-Public mode accepts HTTPS public GitHub repository URLs, separates workspaces by visitor cookie, and runs terminal commands and tests in a new E2B microVM for each request. The sandbox receives no host model credentials. A repository is limited to 10,000 regular files / 50 MB; the service limits agent runs to three per visitor IP per hour and two concurrent jobs per process. These in-memory limits are suitable for a small demo, not an abuse-resistant commercial service. E2B commands have network access so project dependencies can be fetched; untrusted repository code can use that network from inside its isolated VM.
+Public mode accepts HTTPS public GitHub repository URLs, separates workspaces by visitor cookie, and runs terminal commands and tests in a new E2B microVM for each request. The sandbox receives no host model credentials. A shallow clone has a 120-second timeout; the checkout is limited to 10,000 regular files / 50 MB before the workspace is accepted and uploaded. These checks happen after `git clone` has downloaded and checked out the repository, so a very large repository can still consume host disk during ingestion. The service limits agent runs to three per visitor IP per hour and two concurrent jobs per process. These in-memory limits are suitable for a small demo, not an abuse-resistant commercial service. E2B commands have network access so project dependencies can be fetched; untrusted repository code can use that network from inside its isolated VM.
 
 ### Deploy a public demo on Render
 

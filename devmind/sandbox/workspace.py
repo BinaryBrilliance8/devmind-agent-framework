@@ -12,13 +12,19 @@ class WorkspaceError(RuntimeError):
     pass
 
 
-async def _git(*args: str, cwd: Path | None = None) -> str:
+async def _git(*args: str, cwd: Path | None = None, timeout: float = 120) -> str:
     env = {k: v for k, v in os.environ.items() if "API_KEY" not in k.upper() and "TOKEN" not in k.upper()}
     proc = await asyncio.create_subprocess_exec(
         "git", *args, cwd=str(cwd) if cwd else None, env=env,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
-    out, err = await proc.communicate()
+    try:
+        async with asyncio.timeout(timeout):
+            out, err = await proc.communicate()
+    except TimeoutError as exc:
+        proc.kill()
+        await proc.wait()
+        raise WorkspaceError(f"git {' '.join(args)} exceeded {timeout:g}s") from exc
     if proc.returncode:
         raise WorkspaceError(f"git {' '.join(args)} failed ({proc.returncode}): {(err or out).decode(errors='replace').strip()}")
     return out.decode(errors="replace").strip()
@@ -28,7 +34,24 @@ def _is_remote(source: str) -> bool:
     return source.startswith("git@") or urlparse(source).scheme in {"https", "http", "ssh", "git"}
 
 
-async def prepare_workspace(source: str | Path, workspace_path: str | Path) -> Path:
+def _enforce_workspace_limits(root: Path, max_files: int, max_bytes: int) -> None:
+    ignored = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build", "coverage"}
+    count = total = 0
+    for current, directories, files in os.walk(root, followlinks=False):
+        directories[:] = [name for name in directories if name not in ignored and not (Path(current) / name).is_symlink()]
+        for name in files:
+            path = Path(current) / name
+            if path.is_symlink():
+                continue
+            count += 1
+            total += path.stat().st_size
+            if count > max_files or total > max_bytes:
+                raise WorkspaceError(f"Repository exceeds workspace limits ({max_files:,} files / {max_bytes:,} bytes)")
+
+
+async def prepare_workspace(source: str | Path, workspace_path: str | Path, *,
+                            max_files: int | None = None, max_bytes: int | None = None,
+                            command_timeout: float = 120) -> Path:
     """Clone a remote repository or copy a local repository into workspace_path."""
     destination = Path(workspace_path).expanduser().resolve()
     source_text = str(source)
@@ -42,10 +65,12 @@ async def prepare_workspace(source: str | Path, workspace_path: str | Path) -> P
     destination.mkdir(parents=True, exist_ok=True)
     try:
         if remote:
-            await _git("clone", "--depth", "1", source_text, str(destination))
+            await _git("clone", "--depth", "1", source_text, str(destination), timeout=command_timeout)
         else:
             # A real local git clone preserves repository history and is useful offline.
-            await _git("clone", str(local_source), str(destination))
+            await _git("clone", str(local_source), str(destination), timeout=command_timeout)
+        if max_files is not None and max_bytes is not None:
+            _enforce_workspace_limits(destination, max_files, max_bytes)
         await _git("config", "--local", "user.name", "DevMind", cwd=destination)
         await _git("config", "--local", "user.email", "bot@devmind.local", cwd=destination)
     except Exception:

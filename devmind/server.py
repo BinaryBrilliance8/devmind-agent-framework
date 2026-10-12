@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import uuid
 import time
 import asyncio
+import fnmatch
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -73,7 +76,7 @@ class RunRequest(BaseModel):
     issue: str = Field(min_length=5, max_length=12_000)
     provider: str = "openai"
     model: str | None = None
-    test_command: str = Field(default="python3 -m pytest -q", max_length=2_000)
+    test_command: str | None = Field(default=None, max_length=2_000)
 
 
 class CommandRequest(BaseModel):
@@ -87,6 +90,43 @@ def current_workspace(request: Request) -> Path:
     if not workspace or not workspace.is_dir():
         raise HTTPException(409, "Open or create a workspace first")
     return workspace
+
+
+def _detect_test_command(root: Path) -> str | None:
+    """Select a declared test suite only when the repository has one."""
+    package = root / "package.json"
+    if package.is_file():
+        try:
+            manifest = json.loads(package.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            manifest = {}
+        script = str(manifest.get("scripts", {}).get("test", "")).strip()
+        if script and not re.search(r"no test specified|error:\s*no tests?", script, re.I):
+            return "npm test"
+        if _has_test_file(root, {".test.js", ".spec.js", ".test.mjs", ".spec.mjs"}):
+            return "node --test"
+        return None
+    has_python_tests = _has_test_file(root, {"test_*.py", "*_test.py"})
+    if (root / "pyproject.toml").exists() and has_python_tests:
+        return "python3 -m pytest -q"
+    if (root / "pytest.ini").exists() or (root / "tox.ini").exists():
+        if has_python_tests:
+            return "python3 -m pytest -q"
+    if _has_test_file(root, {".test.js", ".spec.js", ".test.mjs", ".spec.mjs"}):
+        return "node --test"
+    if has_python_tests:
+        return "python3 -m pytest -q"
+    return None
+
+
+def _has_test_file(root: Path, patterns: set[str]) -> bool:
+    ignored = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build", "coverage"}
+    for current, directories, files in os.walk(root, followlinks=False):
+        directories[:] = [name for name in directories if name not in ignored and not (Path(current) / name).is_symlink()]
+        for filename in files:
+            if any(filename.endswith(pattern) if pattern.startswith(".") else fnmatch.fnmatch(filename, pattern) for pattern in patterns):
+                return True
+    return False
 
 
 @app.get("/")
@@ -142,12 +182,18 @@ async def workspace(request: WorkspaceRequest, http_request: Request) -> dict:
                 raise WorkspaceError("Remote execution is not configured: E2B_API_KEY is missing")
         if request.benchmark:
             path = await create_benchmark(request.benchmark, destination)
+        elif PUBLIC_MODE:
+            path = await prepare_workspace(request.source or "", destination,
+                                           max_files=10_000, max_bytes=50 * 1024 * 1024,
+                                           command_timeout=120)
         else:
             path = await prepare_workspace(request.source or "", destination)
     except (WorkspaceError, ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
     STATE[session_id] = {"workspace": path}
-    return {"path": str(path), "name": path.name, "tree": _tree(path)}
+    origin = f"Benchmark: {request.benchmark}" if request.benchmark else f"Git repository: {request.source}"
+    return {"path": str(path), "name": path.name, "origin": origin,
+            "tree": _tree(path), "test_command": _detect_test_command(path)}
 
 
 def _tree(root: Path, rel: str = "", depth: int = 0) -> list[dict]:
@@ -228,6 +274,9 @@ async def terminal(request: CommandRequest, http_request: Request) -> dict:
 @app.post("/api/run")
 async def run(request: RunRequest, http_request: Request) -> StreamingResponse:
     root = current_workspace(http_request)
+    test_command = request.test_command or _detect_test_command(root)
+    if not test_command:
+        raise HTTPException(422, "No test command or test suite was detected. Add tests or enter a verification command first.")
     try:
         client = LLMClient(request.provider, request.model)
     except LLMError as exc:
@@ -244,7 +293,7 @@ async def run(request: RunRequest, http_request: Request) -> StreamingResponse:
                 await _PUBLIC_RUN_SEMAPHORE.acquire()
                 acquired = True
                 await executor.open()
-            agent = AgentRun(root, client, test_command=request.test_command, executor=executor)
+            agent = AgentRun(root, client, test_command=test_command, executor=executor)
             async for event in agent.events(request.issue):
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         except (PipelineError, Exception) as exc:

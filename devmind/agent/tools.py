@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import os
+import shutil
 import stat
 import tempfile
 from dataclasses import dataclass
@@ -41,6 +42,13 @@ class FileEditor:
                 os.fsync(stream.fileno())
             os.chmod(temp_name, mode)
             os.replace(temp_name, target)
+            if target.suffix == ".py":
+                # Timestamp-based .pyc validation can accept stale bytecode
+                # after a same-size edit within one filesystem timestamp tick.
+                # Verification must import the bytes just written, never cache.
+                for cache in target.parents[0].rglob("__pycache__"):
+                    if cache.is_dir() and not cache.is_symlink():
+                        shutil.rmtree(cache, ignore_errors=True)
         finally:
             if temp_name and os.path.exists(temp_name):
                 os.unlink(temp_name)
@@ -62,7 +70,19 @@ class FileEditor:
         code, status = await git("status", "--porcelain")
         if code:
             raise EditError(f"Cannot inspect Git state: {status}")
-        if not status:
+        # Pytest commonly leaves untracked __pycache__ directories behind. They
+        # are not checkpointable with `git commit -am`, and should not prevent
+        # editing tracked source files. Only create a checkpoint when tracked
+        # files actually have staged or unstaged changes.
+        code, unstaged = await git("diff", "--quiet")
+        if code not in (0, 1):
+            raise EditError(f"Cannot inspect tracked changes: {unstaged}")
+        unstaged_changes = code == 1
+        code, staged = await git("diff", "--cached", "--quiet")
+        if code not in (0, 1):
+            raise EditError(f"Cannot inspect staged changes: {staged}")
+        staged_changes = code == 1
+        if not unstaged_changes and not staged_changes:
             return None
         code, result = await git("commit", "-am", "DevMind checkpoint")
         if code:
