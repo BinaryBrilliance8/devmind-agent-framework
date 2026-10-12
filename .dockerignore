@@ -1,0 +1,12 @@
+.git
+.github
+.pytest_cache
+.venv
+__pycache__
+*.py[cod]
+tests
+snapclass_project
+work
+outputs
+.env
+.env.*
