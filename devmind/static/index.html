@@ -15,8 +15,8 @@
     <aside class="sidebar panel">
       <div class="section-head"><span>WORKSPACE</span><button id="refreshTree" class="icon-btn" title="Refresh">↻</button></div>
       <div class="source-form">
-        <label for="source">Git URL or local path</label>
-        <div class="inline"><input id="source" placeholder="https://github.com/org/repo.git"><button id="openRepo" class="secondary">Open</button></div>
+        <label id="sourceLabel" for="source">Git URL or local path</label>
+        <div class="inline"><input id="source" placeholder="https://github.com/org/repo"><button id="openRepo" class="secondary">Open</button></div>
         <label for="benchmark">Or load a local benchmark</label>
         <div class="inline"><select id="benchmark"><option value="">Choose benchmark…</option></select><button id="loadBenchmark" class="secondary">Load</button></div>
       </div>
@@ -26,7 +26,7 @@
     <section class="center panel">
       <div class="tabs"><button class="tab active" data-tab="activity">Activity</button><button class="tab" data-tab="ast">AST Map</button><button class="tab" data-tab="diff">Diff</button><div class="tab-spacer"></div><span id="symbolCount" class="subtle"></span></div>
       <div id="activityView" class="tab-view activity-view">
-        <div class="welcome"><div class="welcome-icon">⌘</div><h1>Resolve repository issues with execution grounded feedback.</h1><p>Load a repository or benchmark, describe the issue, then start a run.</p></div>
+        <div class="welcome"><div class="welcome-icon">⌘</div><h1>Resolve repository issues with execution grounded feedback.</h1><p>Load a public GitHub repository or benchmark, describe the issue, then start a run. Commands and tests run in an isolated cloud VM.</p></div>
         <div id="activityStream" class="activity-stream"></div>
       </div>
       <div id="astView" class="tab-view ast-view hidden"><div class="empty-state">Load a workspace to inspect its Python symbol map.</div></div>

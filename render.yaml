@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: devmind-public-demo
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DEVMIND_PUBLIC_MODE
+        value: "true"
+      - key: DEVMIND_HOST
+        value: 0.0.0.0
+      - key: E2B_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

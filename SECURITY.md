@@ -2,15 +2,16 @@
 
 ## Scope
 
-DevMind is a research/portfolio prototype that executes commands and test suites in a user-selected repository. The current executor is not an operating-system sandbox. It does not provide tenant isolation, resource quotas, network isolation, or authentication for the web API.
+DevMind has two execution modes. Local mode runs commands on the host and is not an operating-system sandbox. Public mode uses disposable E2B microVMs for terminal commands and agent test runs, with separate workspace cookies, repository-size limits, in-memory per-IP request limits, and a per-process concurrency cap. The public demo remains anonymous and has no durable abuse controls.
 
 ## Safe operation
 
-- Run against code you own or trust.
-- Keep the web server bound to `127.0.0.1` and do not expose it to the public internet.
-- Do not put production credentials in the server environment. The executor filters environment variable names containing `API_KEY` or `TOKEN`, but other secrets and filesystem access are not isolated.
-- For untrusted code, add a separately maintained OS/container/VM boundary, deny network access, impose CPU/memory/disk quotas, and add authenticated access before running it.
-- Treat the Dockerfile as packaging, not containment.
+- Keep local mode bound to `127.0.0.1`; it is intended only for trusted code.
+- For public mode, configure `DEVMIND_PUBLIC_MODE=true` and a dedicated E2B key. Never pass the host's model credentials into an execution VM.
+- Public mode enables VM network access so repositories can install dependencies. Treat code and tests inside that VM as untrusted and assume they can make outbound network requests.
+- Set explicit spend limits with the sandbox provider and monitor usage. The in-memory per-IP limits can be bypassed across service restarts and replicas.
+- Do not provide private-repository credentials. Public mode accepts only public GitHub HTTPS URLs.
+- Treat the web service container as packaging, not the execution boundary; E2B provides the separate VM boundary.
 
 ## Reporting
 

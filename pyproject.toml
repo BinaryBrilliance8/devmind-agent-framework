@@ -7,7 +7,7 @@ name = "devmind"
 version = "0.1.0"
 description = "A sandboxed, execution-grounded framework for repository-level software engineering agents"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.27"]
+dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.27", "e2b>=2.50"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

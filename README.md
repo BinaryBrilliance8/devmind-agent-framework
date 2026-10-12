@@ -2,7 +2,7 @@
 
 **An execution-grounded agent framework for repository-level software engineering.** DevMind combines AST-based repository context, bounded subprocess execution, syntax-guarded edits, Git checkpoints, pytest feedback, and a small web IDE into one inspectable workflow.
 
-> Research prototype / portfolio project. The executor applies useful process-level guardrails, but it is not an OS security boundary. Run only against repositories and code you trust. Do not expose the web server to the public internet or use it as a multi-tenant service.
+> Portfolio / research prototype. Local mode executes repository commands on the local host and is intended for trusted code. Public mode delegates commands and tests to disposable E2B microVMs.
 
 ## What it does
 
@@ -42,6 +42,8 @@ Hosted providers are `openai`, `gemini`, and `groq`; set the corresponding `OPEN
 | --- | --- | --- |
 | `DEVMIND_HOST` | `127.0.0.1` | Bind address; keep loopback for local use |
 | `DEVMIND_PORT` | `8000` | HTTP port |
+| `DEVMIND_PUBLIC_MODE` | `false` | Enable per-visitor workspaces and remote E2B execution |
+| `E2B_API_KEY` | unset | Required for public mode; never sent to the execution VM |
 | `DEVMIND_WORKSPACES` | system temp `devmind-workspaces` | Workspace storage root |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434/v1/chat/completions` | Ollama-compatible endpoint |
 | `DEVMIND_MODEL` | provider default | Override the model name |
@@ -83,9 +85,18 @@ The architecture tests exercise real local Git operations, syntax rejection with
 
 ## Security and deployment
 
-This application deliberately launches commands and tests from the opened workspace. Process timeouts, argv-only execution, path checks, output caps, and environment filtering reduce accidental risk; they do **not** contain malicious code. A hostile repository can still exploit the host through interpreters, dependencies, filesystem behavior, or resource use. The current web app also has no authentication or tenant isolation.
+Local mode deliberately launches commands and tests from the opened workspace on the same host. Process timeouts, argv-only execution, path checks, output caps, and environment filtering do **not** contain malicious code. Do not expose local mode to untrusted users.
 
-For a demo, run it locally or on a private, trusted network behind authentication and a separately configured OS/container sandbox. Never bind an unauthenticated instance to `0.0.0.0` or publish it as an open service. The included Dockerfile is a packaging convenience, not a security sandbox. Review [SECURITY.md](SECURITY.md) before operating it.
+Public mode accepts HTTPS public GitHub repository URLs, separates workspaces by visitor cookie, and runs terminal commands and tests in a new E2B microVM for each request. The sandbox receives no host model credentials. A repository is limited to 10,000 regular files / 50 MB; the service limits agent runs to three per visitor IP per hour and two concurrent jobs per process. These in-memory limits are suitable for a small demo, not an abuse-resistant commercial service. E2B commands have network access so project dependencies can be fetched; untrusted repository code can use that network from inside its isolated VM.
+
+### Deploy a public demo on Render
+
+1. Create an E2B account and API key at [e2b.dev](https://e2b.dev/).
+2. In Render, create a Blueprint from this repository and select `render.yaml`.
+3. In the service environment, set `E2B_API_KEY` and at least one model key (`OPENAI_API_KEY`, `GEMINI_API_KEY`, or `GROQ_API_KEY`). The Blueprint marks these values secret; do not commit them.
+4. Deploy and share the generated `onrender.com` URL. The free service may sleep when idle and has ephemeral storage, so demo workspaces are temporary.
+
+The included Dockerfile packages the web service; the E2B microVM is the execution boundary. Review [SECURITY.md](SECURITY.md) before operating a public instance.
 
 ## Project status
 

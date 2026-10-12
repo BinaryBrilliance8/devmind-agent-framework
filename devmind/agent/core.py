@@ -20,10 +20,10 @@ class PipelineError(RuntimeError):
 
 
 class AgentRun:
-    def __init__(self, workspace: str | Path, client: LLMClient, *, test_command: str = "python3 -m pytest -q"):
+    def __init__(self, workspace: str | Path, client: LLMClient, *, test_command: str = "python3 -m pytest -q", executor=None):
         self.workspace = Path(workspace).resolve()
         self.client = client
-        self.executor = Executor(self.workspace)
+        self.executor = executor or Executor(self.workspace)
         self.editor = FileEditor(self.workspace)
         self.test_command = test_command
 
@@ -113,6 +113,8 @@ class AgentRun:
                 if explicit_paths and patch["path"] not in explicit_paths:
                     raise EditError(f"Issue explicitly targets {', '.join(explicit_paths)}; edit a file from that list")
                 result = await self.editor.apply(operation, patch["path"], old=patch.get("old"), content=patch.get("content", ""), line=patch.get("line"))
+                if result.changed and hasattr(self.executor, "sync_file"):
+                    await self.executor.sync_file(patch["path"])
                 yield await emit("tool", tool="file_editor", result=result.__dict__)
                 break
             except (ValueError, KeyError, EditError) as exc:
